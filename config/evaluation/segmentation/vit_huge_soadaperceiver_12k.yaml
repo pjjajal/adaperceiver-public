@@ -1,0 +1,87 @@
+defaults:
+  - override hydra/job_logging: none
+
+seed: 1348
+
+evaluation:
+  output_csv: "full_attn_segmentation_eval.csv"
+  eval_depth: null
+  token_grans: [32, 64, 96, 128, 192, 256]
+  mat_dims: [416, 624, 832] # 832 is the final
+
+model:
+  compile: true
+  compile_mode: "default" # [default, max-autotune, no-autotune]
+  model_checkpoint: ""
+  mat_dims: [416, 624, 832] # 832 is the final dimension.
+  token_grans: [32, 64, 96, 128, 192, 256]
+  mask_type: block # [block, causal, null]
+  encoder_config:
+    # adapter type: [patch_embed, conv]
+    adapter_type: "patch_embed"
+    conv_adapter_model: null
+    # image settings
+    img_size: 224
+    in_channels: 3
+    patch_size: 14
+    use_fourier: false
+    fourier_bands: 8
+    # classification
+    num_classes: 150
+    # encoder settings
+    num_heads: 13
+    embed_dim: 832
+    depth: 21
+    max_latent_tokens: 256
+    max_latent_tokens_mult: 2
+    rope_theta: 10000
+    ffn_ratio: 2.57
+    qkv_bias: true
+    proj_bias: true
+    ls_init_values: 1.0e-5
+    # layers
+    act_layer: "gelu"
+    norm_layer: "layernorm"
+    ffn_layer: "mlp"
+    attn_layer: "full"
+    # other
+    process_token_init: "learned"
+    use_embed_ffn: true
+    use_output_ffn: true
+    output_feat_dim: 1280
+    # regularization
+    proj_drop: 0.0
+    attn_drop: 0.0
+    drop_path: 0.0
+    head_drop: 0.25
+    seg_head_drop: 0.25
+    cat_cls: false
+
+dataset:
+  num_proc: 16
+  name: scene_parsing_ade20k
+  num_classes: 150
+  transforms:
+    image_processor: "nvidia/mit-b0"
+    image_size: 518
+    # normalize
+    mean: [0.48145466, 0.4578275, 0.40821073]
+    std: [0.26862954, 0.26130258, 0.27577711]
+    # colour jitter
+    jitter:
+      enable: true
+      brightness: 0.25
+      contrast: 0.25
+      saturation: 0.25
+      hue: 0.1
+
+
+  # dataloader settings
+  batch_size: 8
+  num_workers: 1
+  val_batch_size: 8
+  val_num_workers: 1
+  pin_memory: true
+
+  # distributed sampler
+  use_distributed_sampler: false # this is false because we are using hf datasets.

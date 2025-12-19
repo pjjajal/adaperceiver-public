@@ -1,0 +1,100 @@
+defaults:
+  - override hydra/job_logging: none
+
+seed: 1348
+
+trainer:
+  devices: 1
+  num_nodes: 1
+  # For available strategies look at the PyTorch Lightning docs.
+  # strategy: auto
+  strategy: ddp_find_unused_parameters_true
+  # strategy: ddp
+  # Look at the PyTorch Lightning docs for available precision.
+  precision: bf16-mixed
+
+  # logging settings
+  wandb: true
+  wandb_project: adaperceiver_depth
+  wandb_save_dir: "."
+  log_every_n_steps: 10
+  gradnorm_logging: true
+  rich_print: false
+
+  # checkpointing settings
+  checkpoint_save_dir: null
+  checkpoint_name: null
+  save_loc: null # no need to specify this.
+  resume_checkpoint: null
+
+  # grad checkpointing
+  grad_checkpointing: false
+
+model:
+  compile: false
+  compile_mode: "default" # [default, max-autotune, no-autotune]
+  name: "hf_hub:timm/vit_large_patch14_clip_224.laion2b_ft_in12k"
+  num_classes: 150
+  head_drop: 0.25
+  cat_cls: true
+  use_mlp: true
+
+
+loss:
+  sig_loss_weight: 2.0
+  sig_loss_warmup: 500
+  grad_loss_weight: 0.5
+
+dataset:
+  num_proc: 16
+  name: nyu_depth
+  min_depth: 0.001
+  max_depth: 10.0
+  bins: 256
+  transforms:
+    img_size: [448, 602]
+    rotation: 2.5
+    # normalize
+    mean: [0.5, 0.5, 0.5]
+    std: [0.5, 0.5, 0.5]
+    # colour jitter
+    jitter:
+      enable: true
+      brightness: 0.25
+      contrast: 0.25
+      saturation: 0.25
+      hue: 0.1
+
+  # dataloader settings
+  batch_size: 1
+  num_workers: 8
+  val_batch_size: 1
+  val_num_workers: 8
+  pin_memory: true
+
+  # distributed sampler
+  use_distributed_sampler: false # this is false because we are using hf datasets.
+
+optimizer:
+  # general settings
+  total_steps: null # no need to specify this.
+  max_epochs: 8
+  optimizer: nadamw
+  lr: 1.0e-4
+  weight_decay: 0.01
+  betas: [0.90, 0.999]
+  caution: true
+  grad_clip: 35
+  ema: 0.9995
+  accumulate_grad_batches: 1
+  overfit_batches: 0.0 # for debugging purposes, [0.0, 1.0]
+  # shampoo specific settings
+  preconditioning_frequency: 30
+  max_preconditioner_dim: 8192
+  start_preconditioning_step: 500
+  # scheduler settings
+  schedule: cosine
+  warmup_steps: 300
+  warmup_lr: 1.0e-6
+  min_lr: 1.0e-6
+  power: 1.0

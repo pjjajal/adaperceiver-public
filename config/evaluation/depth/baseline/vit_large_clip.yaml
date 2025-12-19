@@ -1,0 +1,45 @@
+defaults:
+  - override hydra/job_logging: none
+
+seed: 1348
+
+model:
+  compile: false
+  compile_mode: "default" # [default, max-autotune, no-autotune]
+  name: "hf_hub:timm/vit_large_patch14_clip_224.laion2b_ft_in12k"
+  model_checkpoint: ""
+  num_classes: 150
+  head_drop: 0.0
+  cat_cls: true
+  use_mlp: true
+
+dataset:
+  num_proc: 16
+  name: nyu_depth
+  min_depth: 0.001
+  max_depth: 10.0
+  bins: 256
+  transforms:
+    img_size: [448, 602]
+    rotation: 2.5
+    # normalize
+    mean: [0.5, 0.5, 0.5]
+    std: [0.5, 0.5, 0.5]
+    # colour jitter
+    jitter:
+      enable: true
+      brightness: 0.25
+      contrast: 0.25
+      saturation: 0.25
+      hue: 0.1
+
+  # dataloader settings
+  batch_size: 1
+  num_workers: 8
+  val_batch_size: 1
+  val_num_workers: 8
+  pin_memory: true
+
+  # distributed sampler
+  use_distributed_sampler: false # this is false because we are using hf datasets.
+

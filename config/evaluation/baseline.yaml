@@ -1,0 +1,46 @@
+defaults:
+  - override hydra/job_logging: none
+
+seed: 1348
+
+model:
+  name: "hf_hub:timm/vit_so150m2_patch16_reg1_gap_256.sbb_e200_in12k_ft_in1k"
+  num_classes: 1000
+  compile: true
+
+dataset:
+  num_proc: 16
+  name: imagenet
+  num_classes: 1000
+  # num_classes: 19167
+  data_path: null
+  transforms:
+    image_size: 224
+    val_image_size: 224
+    max_crop_size: 256
+    # RandAug
+    rand_augment: false
+    num_ops: 2
+    magnitude: 20
+    # normalize
+    mean: [0.5, 0.5, 0.5]
+    std: [0.5, 0.5, 0.5]
+    # mixup, cutmix, random-erasing
+    mixup: true
+    mixup_alpha: 0.8
+    cutmix: true
+    cutmix_alpha: 0.5
+    random_erasing: true
+    erase_prob: 0.25
+
+
+  # dataloader settings
+  batch_size: 512
+  num_workers: 8
+  val_batch_size: 512
+  val_num_workers: 8
+  pin_memory: true
+
+  # distributed sampler
+  use_distributed_sampler: false # this is false because we are using hf datasets.
+

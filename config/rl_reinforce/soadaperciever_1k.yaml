@@ -1,0 +1,121 @@
+defaults:
+  - override hydra/job_logging: none
+
+seed: 1348
+
+policy:
+  init_weights: null
+
+reward:
+  # multi-sample
+  num_samples: 1
+  # reward
+  reward_scale: 3.0
+  lambda_cost: 0.05
+  token_weight: 1.0
+  depth_weight: 0.0
+  mat_dim_weight: 0.0
+  reward_type: "ce"
+  ema_decay: 0.995
+  # entropy reward
+  alpha: 0.2
+  # temperature scheduler
+  init_temp: 1.0
+  final_temp: 1.0
+
+model:
+  compile: true
+  compile_mode: "default" # [default, max-autotune, no-autotune]
+  model_checkpoint: null
+  mat_dims: [416, 624, 832] # 832 is the final dimension.
+  token_grans: [32, 64, 96, 128, 192, 256]
+  mask_type: block # [block, causal, null]
+  encoder_config:
+    # adapter type: [patch_embed, conv]
+    adapter_type: "patch_embed"
+    conv_adapter_model: null
+    # image settings
+    img_size: 224
+    in_channels: 3
+    patch_size: 16
+    use_fourier: false
+    fourier_bands: 8
+    # classification
+    num_classes: 1000
+    # encoder settings
+    num_heads: 13
+    embed_dim: 832
+    depth: 21
+    max_latent_tokens: 256
+    max_latent_tokens_mult: 2
+    rope_theta: 10000
+    ffn_ratio: 2.57
+    qkv_bias: true
+    proj_bias: true
+    ls_init_values: 1.0e-6
+    # layers
+    act_layer: "gelu"
+    norm_layer: "layernorm"
+    ffn_layer: "mlp"
+    attn_layer: "flex"
+    # other
+    process_token_init: "learned"
+    use_embed_ffn: true
+    use_output_ffn: false
+    # regularization
+    proj_drop: 0.0
+    attn_drop: 0.0
+    drop_path: 0.0
+    head_drop: 0.0
+
+
+dataset:
+  num_proc: 16
+  name: imagenet
+  num_classes: 1000
+  data_path: null
+  transforms:
+    image_size: 224
+    val_image_size: 224
+    max_crop_size: 256
+    # RandAug
+    rand_augment: true
+    num_ops: 2
+    magnitude: 20
+    # normalize
+    mean: [0.48145466, 0.4578275, 0.40821073]
+    std: [0.26862954, 0.26130258, 0.27577711]
+    # mixup, cutmix, random-erasing
+    mixup: false
+    mixup_alpha: 0.8
+    cutmix: false
+    cutmix_alpha: 0.5
+    random_erasing: false
+    erase_prob: 0.25
+
+
+  # dataloader settings
+  batch_size: 256
+  num_workers: 32
+  val_batch_size: 256
+  val_num_workers: 32
+  pin_memory: true
+
+  # distributed sampler
+  use_distributed_sampler: false # this is false because we are using hf datasets.
+
+optimizer:
+  # general settings
+  total_steps: null # no need to specify this.
+  max_epochs: 1
+  optimizer: adamw
+  lr: 1.0e-4
+  weight_decay: 0.0
+  betas: [0.90, 0.999]
+  grad_clip: 3.0
+  # scheduler settings
+  schedule: cosine
+  warmup_steps: 500
+  warmup_lr: 1.0e-6
+  min_lr: 1.0e-5
+  power: null

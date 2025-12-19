@@ -1,0 +1,173 @@
+defaults:
+  - override hydra/job_logging: none
+
+seed: 1348
+
+trainer:
+  devices: 1
+  num_nodes: 1
+  # For available strategies look at the PyTorch Lightning docs.
+  # strategy: auto
+  strategy: ddp_find_unused_parameters_true
+  # strategy: ddp
+  # Look at the PyTorch Lightning docs for available precision.
+  precision: bf16-mixed
+
+  # logging settings
+  wandb: true
+  wandb_project: adaperceiver
+  wandb_save_dir: "."
+  log_every_n_steps: 10
+  gradnorm_logging: true
+  rich_print: false
+
+  # checkpointing settings
+  checkpoint_save_dir: null
+  checkpoint_name: null
+  save_loc: null # no need to specify this.
+  resume_checkpoint: null
+
+  # grad checkpointing
+  grad_checkpointing: false
+
+model:
+  compile: true
+  compile_mode: "default" # [default, max-autotune, no-autotune]
+  model_checkpoint: null
+  mat_dims: [416, 624, 832] # 832 is the final dimension.
+  token_grans: [32, 64, 96, 128, 192, 256]
+  mask_type: block # [block, causal, null]
+  encoder_config:
+    # adapter type: [patch_embed, conv]
+    adapter_type: "patch_embed"
+    conv_adapter_model: null
+    # image settings
+    img_size: 224
+    in_channels: 3
+    patch_size: 14
+    use_fourier: false
+    fourier_bands: 8
+    # classification
+    num_classes: 11821
+    # encoder settings
+    num_heads: 13
+    embed_dim: 832
+    depth: 21
+    max_latent_tokens: 256
+    max_latent_tokens_mult: 2
+    rope_theta: 10000
+    ffn_ratio: 2.57
+    qkv_bias: true
+    proj_bias: true
+    ls_init_values: 1.0e-5
+    # layers
+    act_layer: "gelu"
+    norm_layer: "layernorm"
+    ffn_layer: "mlp"
+    attn_layer: "flex"
+    # other
+    process_token_init: "learned"
+    use_embed_ffn: true
+    use_output_ffn: false
+    # regularization
+    proj_drop: 0.0
+    attn_drop: 0.0
+    drop_path: 0.0
+    head_drop: 0.0
+
+teacher: 
+  teacher_name: "hf_hub:timm/vit_huge_patch14_clip_224.laion2b_ft_in12k"
+  compile: true
+  compile_mode: "max-autotune" # [default, max-autotune, no-autotune]
+
+pretrained_init:
+  enable: false
+  model: "hf_hub:timm/vit_so150m2_patch16_reg1_gap_256.sbb_e200_in12k"
+
+dataset:
+  num_proc: 16
+  name: imagenet12k
+  num_classes: 11821
+  data_path: null
+  transforms:
+    image_size: 224
+    val_image_size: 224
+    max_crop_size: 256
+    # RandAug
+    rand_augment: true
+    num_ops: 2
+    magnitude: 15
+    # normalize
+    mean: [0.48145466, 0.4578275, 0.40821073]
+    std: [0.26862954, 0.26130258, 0.27577711]
+    # mixup, cutmix, random-erasing
+    mixup: true
+    mixup_alpha: 1.0
+    cutmix: false
+    cutmix_alpha: 0.5
+    random_erasing: false
+    erase_prob: 0.25
+
+
+  # dataloader settings
+  batch_size: 128
+  num_workers: 32
+  val_batch_size: 128
+  val_num_workers: 8
+  pin_memory: true
+
+  # distributed sampler
+  use_distributed_sampler: false # this is false because we are using hf datasets.
+
+loss:
+  # supervised loss
+  supervised_loss_weight: 0.0
+  bce: false
+  sum_classes: false
+  # distillation loss
+  kl_weight: 1.0
+  temperature: 1
+  # feature matching loss
+  feature_matching_loss:
+    enable: true
+    weight: 1.0
+    sim_loss_weight: 0.9
+    norm_loss_weight: 0.1
+
+  # adaptive losses
+  token_loss:
+    enable: true
+    weight: 1.0
+    sample_tokens: false # if false, it will use all tokens.
+    token_loss_weights: [1, 1, 1, 1, 1, 1] # this NEEDS to be the length of num_tokens.
+  depth_loss:
+    enable: false
+    weight: 1
+    depth_loss_type: "linear" # [linear, exp, constant]
+  matyr_loss:
+    enable: false
+    matyr_loss_weights: [1.0]
+
+optimizer:
+  # general settings
+  total_steps: null # no need to specify this.
+  max_epochs: 30
+  optimizer: shampoo-soap
+  lr: 0.5e-3
+  weight_decay: 0.003
+  betas: [0.90, 0.999]
+  grad_clip: 3.0
+  ema: 0.9995
+  accumulate_grad_batches: 8
+  overfit_batches: 0.0 # for debugging purposes, [0.0, 1.0]
+  # shampoo specific settings
+  preconditioning_frequency: 30
+  max_preconditioner_dim: 8192
+  start_preconditioning_step: 500
+  # scheduler settings
+  schedule: cosine
+  warmup_steps: 3000
+  warmup_lr: 1.0e-6
+  min_lr: 5.0e-4
+  power: null
+  output_adapters: false
