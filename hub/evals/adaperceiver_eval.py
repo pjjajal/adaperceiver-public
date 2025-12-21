@@ -33,10 +33,10 @@ def eval(cfg, model: ClassificationAdaPerceiver, loader, device):
     @torch.inference_mode()
     def _eval_config(num_tokens, mat_dim, depth):
         top_1_accuracy = Accuracy(
-            task="multiclass", num_classes=cfg.model.encoder_config.num_classes, top_k=1
+            task="multiclass", num_classes=model.num_classes, top_k=1
         ).to(device)
         top_5_accuracy = Accuracy(
-            task="multiclass", num_classes=cfg.model.encoder_config.num_classes, top_k=5
+            task="multiclass", num_classes=model.num_classes, top_k=5
         ).to(device)
 
         # # Progress bar for batch processing
@@ -50,7 +50,7 @@ def eval(cfg, model: ClassificationAdaPerceiver, loader, device):
                 img = img.to(device)
                 label = label.to(device)
                 with torch.no_grad():
-                    output, _, (_, _) = model(
+                    output = model(
                         img,
                         num_tokens=num_tokens,
                         mat_dim=mat_dim,
@@ -72,7 +72,7 @@ def eval(cfg, model: ClassificationAdaPerceiver, loader, device):
         memory = torch.cuda.max_memory_allocated()
 
         flops = {"forward_total": 0.0, "backward_total": 0.0}
-        if cfg.model.encoder_config.attn_layer == "full":
+        if model.attn_layer == "full":
             flops_input_shape = (
                 1,
                 *input_shape[1:],
@@ -133,7 +133,7 @@ def eval(cfg, model: ClassificationAdaPerceiver, loader, device):
     return pd.DataFrame(results)
 
 
-@hydra.main(version_base=None, config_path="config/evaluation")
+@hydra.main(version_base=None, config_path="configs")
 def main(cfg: DictConfig):
     # Set seed
     L.seed_everything(cfg.seed)

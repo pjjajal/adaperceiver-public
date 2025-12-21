@@ -12,7 +12,7 @@ evaluation:
 model:
   compile: true
   compile_mode: "default" # [default, max-autotune, no-autotune]
-  pretrained_model_name_or_path: "adaperceiver-classification-IN-1k-ft"
+  pretrained_model_name_or_path: "pjajal/adaperceiver-in1k-ft"
 
 dataset:
   num_proc: 16
