@@ -20,9 +20,9 @@ from modules.networks.adaperceiver import get_attn_layer, get_ffn_layer
 class AdaPerceiver(nn.Module):
     def __init__(
         self,
-        embed_dim: int,
-        num_heads: int,
-        depth: int,
+        embed_dim: int=768,
+        num_heads: int=12,
+        depth: int=12,
         max_latent_tokens: int = 256,
         rope_theta: int = 10000,
         ffn_ratio: float = 4.0,
@@ -64,9 +64,9 @@ class AdaPerceiver(nn.Module):
         self.block_mask_type = block_mask
 
         # Adaptivity Parameters
-        self._orig_mask_token_grans = list(mask_token_grans) or []
-        self.mask_token_grans = list(mask_token_grans) or []
-        self.mat_dims = list(mat_dims) or []
+        self._orig_mask_token_grans = list(mask_token_grans) if mask_token_grans is not None else []
+        self.mask_token_grans = list(mask_token_grans) if mask_token_grans is not None else []
+        self.mat_dims = list(mat_dims) if mat_dims is not None else []
 
         self.block_mask = None  # set the block mask to None initially
 

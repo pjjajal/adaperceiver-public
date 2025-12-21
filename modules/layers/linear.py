@@ -79,7 +79,7 @@ class _MatLinear(nn.Linear):
     def forward(self, x, mat_dim=None, mat_input=False) -> torch.Tensor:
         # If no slicing dimension is specified, perform a standard linear transformation.
         if mat_dim is None:
-            return super().forward(x)
+            return super()(x)
 
         if isinstance(mat_dim, int):
             if self.training:
@@ -211,7 +211,7 @@ class MatLinear(nn.Linear):
           - list/tuple/tensor of length B: per-batch slice
         """
         if mat_dim is None:
-            return super().forward(x)
+            return super()(x)
 
         if isinstance(mat_dim, int):
             if self.training:

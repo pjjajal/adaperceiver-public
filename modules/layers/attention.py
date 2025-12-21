@@ -47,8 +47,8 @@ class Attention(nn.Module):
         )  # [B, H, N, D]
         # Compute QK
         head_dim = C // self.num_heads
-        q = self.q.forward(x).reshape(B, N, self.num_heads, head_dim)
-        k = self.k.forward(x).reshape(B, N, self.num_heads, head_dim)
+        q = self.q(x).reshape(B, N, self.num_heads, head_dim)
+        k = self.k(x).reshape(B, N, self.num_heads, head_dim)
         if freqs_cis is not None:
             q = apply_rotary_emb(q, freqs_cis)
             k = apply_rotary_emb(k, freqs_cis)
@@ -81,8 +81,8 @@ class FlexAttention(Attention):
         )  # [B, H, N, D]
         # Compute QK
         head_dim = C // self.num_heads
-        q = self.q.forward(x).reshape(B, N, self.num_heads, head_dim)
-        k = self.k.forward(x).reshape(B, N, self.num_heads, head_dim)
+        q = self.q(x).reshape(B, N, self.num_heads, head_dim)
+        k = self.k(x).reshape(B, N, self.num_heads, head_dim)
         if freqs_cis is not None:
             q = apply_rotary_emb(q, freqs_cis)
             k = apply_rotary_emb(k, freqs_cis)

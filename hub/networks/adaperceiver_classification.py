@@ -25,9 +25,9 @@ class ClassificationAdaPerceiver(
 ):
     def __init__(
         self,
-        embed_dim: int,
-        num_heads: int,
-        depth: int,
+        embed_dim: int = 768,
+        num_heads: int = 12,
+        depth: int = 12,
         max_latent_tokens: int = 256,
         rope_theta: int = 10000,
         ffn_ratio: float = 4.0,
@@ -145,7 +145,7 @@ class ClassificationAdaPerceiver(
     ):
         intermediates = []
         for block in self.blocks:
-            process_latents = block.forward(
+            process_latents = block(
                 x=process_latents,
                 freq_cis=freq_cis,
                 mat_dim=mat_dim,
@@ -163,7 +163,7 @@ class ClassificationAdaPerceiver(
         depth=None,
     ):
         for i, block in enumerate(self.blocks):
-            process_latents = block.forward(
+            process_latents = block(
                 x=process_latents,
                 freq_cis=freq_cis,
                 mat_dim=mat_dim,
@@ -185,7 +185,7 @@ class ClassificationAdaPerceiver(
         depth_tau=None,
     ):
         for i, block in enumerate(self.blocks):
-            process_latents = block.forward(
+            process_latents = block(
                 x=process_latents,
                 freq_cis=freq_cis,
                 mat_dim=mat_dim,
@@ -212,7 +212,7 @@ class ClassificationAdaPerceiver(
         process_latents: torch.Tensor,
         freq_cis: torch.Tensor,
     ):
-        process_latents = process_latents + self.read_head.forward(
+        process_latents = process_latents + self.read_head(
             sink=process_latents,
             src=patches,
             freq_cis_q=freq_cis,  # apply the RoPE frequencies to the query
@@ -226,7 +226,7 @@ class ClassificationAdaPerceiver(
         output_latents: torch.Tensor,
         freq_cis: torch.Tensor,
     ):
-        output_latents = output_latents + self.write_head.forward(
+        output_latents = output_latents + self.write_head(
             sink=output_latents,  # NOTE: output_latents is the sink.
             src=process_latents,
             freq_cis_q=None,  # no RoPE on query since they already have positional information
@@ -256,8 +256,8 @@ class ClassificationAdaPerceiver(
 
         # Creates the process and output latents
         N = num_tokens if num_tokens else self.max_latent_tokens  # Number of tokens
-        process_latents = self.process_latents.forward((B, N))
-        output_latents = self.output_latents.forward(B)
+        process_latents = self.process_latents((B, N))
+        output_latents = self.output_latents(B)
 
         # Compute the RoPE frequencies
         freq_cis = self.compute_freq_cis(N, device)
@@ -364,18 +364,12 @@ if __name__ == "__main__":
     state_dict.pop("ema_n_averaged", None)
     model.load_state_dict(state_dict, strict=True)
 
-    model.push_to_hub("adaperceiver-classification-IN-1k-ft", private=False)
-
     model.save_pretrained("test-adaperceiver-classification-model")
-    print(model)
 
     model = ClassificationAdaPerceiver.from_pretrained(
         "test-adaperceiver-classification-model"
     )
     print("Model loaded from hub successfully!")
-
-    print(model)
-    print(model.freq_cis.shape)
 
     # Test forward pass
     dummy_input = torch.randn(2, 3, 224, 224)
