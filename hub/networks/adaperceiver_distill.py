@@ -9,18 +9,19 @@ from timm.layers import get_act_layer, get_norm_layer
 
 from modules.layers.adapters import OutputAdapter, PatchEmbedAdapter
 from modules.layers.ffn import Mlp
-from modules.layers.latents import OutputLatents
+from modules.layers.latents import PatchEmbedOutputLatents, OutputLatents
 from modules.layers.fusion import CrossAttentionFusion
 from modules.networks.adaperceiver import get_ffn_layer
 from .adaperceiver import AdaPerceiver
 
 
-class ClassificationOutput(NamedTuple):
+class DistillOutput(NamedTuple):
     logits: torch.Tensor
+    features: torch.Tensor
 
 
-# This is the AdaPerceiver model configured for classification
-class ClassificationAdaPerceiver(
+# This is the version of AdaPerceiver with the
+class DistillAdaPerceiver(
     AdaPerceiver,
     PyTorchModelHubMixin,
     repo_url="https://github.com/pjjajal/adaperceiver-public",
@@ -49,13 +50,14 @@ class ClassificationAdaPerceiver(
         block_mask: Literal["causal", "block", "none"] = "block",
         mask_token_grans: list[int] = None,
         mat_dims: list[int] = None,
-        # Classification-specific args
+        # Distillation-specific args
         img_size: int = 224,
+        num_classes: int = 1000,
         in_channels: int = 3,
         patch_size: int = 16,
-        num_classes: int = 1000,
         use_embed_ffn: bool = False,
         use_output_ffn: bool = False,
+        output_feat_dim: int = 768,
     ):
         super().__init__(
             embed_dim=embed_dim,
@@ -80,13 +82,15 @@ class ClassificationAdaPerceiver(
             mask_token_grans=mask_token_grans,
             mat_dims=mat_dims,
         )
-        # Classification-specific initializations
+
+        # Distillation-specific initializations
         self.num_classes = num_classes
         self.use_embed_ffn = use_embed_ffn
         self.use_output_ffn = use_output_ffn
         self.img_size = img_size
         self.in_channels = in_channels
         self.patch_size = patch_size
+        self.output_feat_dim = output_feat_dim
 
         act_layer = get_act_layer(self.act_layer) or nn.GELU
         ffn_layer = get_ffn_layer(self.ffn_layer) or Mlp
@@ -104,6 +108,7 @@ class ClassificationAdaPerceiver(
             norm_layer=norm_layer if self.use_embed_ffn else None,
         )
 
+        # Output latents and head forlogits distillation
         self.output_latents = OutputLatents(
             dim=self.embed_dim, num_tokens=1, token_init="learned"
         )
@@ -118,6 +123,22 @@ class ClassificationAdaPerceiver(
             drop=self.head_drop,
         )
 
+        # Output latents and head for feature distillation
+        self.output_latents_feat = PatchEmbedOutputLatents(
+            in_features=self.embed_dim,
+            out_features=self.embed_dim,
+        )
+        self.output_adapter_feat = OutputAdapter(
+            in_features=self.embed_dim,
+            out_features=self.output_feat_dim,
+            use_ffn=True,  # THIS IS ALWAYS USED. Similar to AM-RADIO paper.
+            ffn_layer=ffn_layer,
+            ffn_ratio=self.ffn_ratio,
+            act_layer=act_layer,
+            norm_layer=norm_layer,
+            drop=self.head_drop,
+        )
+
         self.read_head = CrossAttentionFusion(
             embed_dim=self.embed_dim,
             num_heads=self.num_heads,
@@ -128,6 +149,15 @@ class ClassificationAdaPerceiver(
             norm_layer=norm_layer,
         )
         self.write_head = CrossAttentionFusion(
+            embed_dim=self.embed_dim,
+            num_heads=self.num_heads,
+            qkv_bias=self.qkv_bias,
+            proj_bias=self.proj_bias,
+            attn_drop=self.attn_drop,
+            proj_drop=self.proj_drop,
+            norm_layer=norm_layer,
+        )
+        self.write_head_feat = CrossAttentionFusion(
             embed_dim=self.embed_dim,
             num_heads=self.num_heads,
             qkv_bias=self.qkv_bias,
@@ -178,46 +208,15 @@ class ClassificationAdaPerceiver(
                 break
         return process_latents
 
-    def forward_block_conf(
-        self,
-        process_latents: torch.Tensor,
-        output_latents: torch.Tensor,
-        freq_cis: torch.Tensor,
-        block_mask: flex_attn.BlockMask = None,
-        mat_dim=None,
-        depth_tau=None,
-    ):
-        for i, block in enumerate(self.blocks):
-            process_latents = block(
-                x=process_latents,
-                freq_cis=freq_cis,
-                mat_dim=mat_dim,
-                block_mask=block_mask,
-            )
-            if depth_tau is not None:
-                # Compute the confidence of the current output latents
-                temp_writeout = self.write(
-                    process_latents=process_latents,
-                    output_latents=output_latents,
-                    freq_cis=freq_cis,
-                )
-                temp_output = self.output_head(temp_writeout)
-                probs = F.softmax(temp_output, dim=-1)
-                conf, _ = torch.max(probs, dim=-1)  # (B,)
-                avg_conf = torch.mean(conf).item()
-                if avg_conf >= depth_tau:
-                    break
-        return process_latents
-
     def read(
         self,
-        patches: torch.Tensor,
+        x: torch.Tensor,
         process_latents: torch.Tensor,
         freq_cis: torch.Tensor,
     ):
         process_latents = process_latents + self.read_head(
             sink=process_latents,
-            src=patches,
+            src=x,
             freq_cis_q=freq_cis,  # apply the RoPE frequencies to the query
             freq_cis_k=None,  # no RoPE on key since they already have positional information
         )
@@ -237,6 +236,27 @@ class ClassificationAdaPerceiver(
         )
         return output_latents
 
+    def write_feat(
+        self,
+        process_latents: torch.Tensor,
+        output_latents: torch.Tensor,
+        freq_cis: torch.Tensor,
+    ):
+        output_latents = output_latents + self.write_head_feat(
+            sink=output_latents,  # NOTE: output_latents is the sink.
+            src=process_latents,
+            freq_cis_q=None,  # no RoPE on query since they already have positional information
+            freq_cis_k=freq_cis,  # NOTE: # apply the RoPE frequencies to the keys
+        )
+        return output_latents
+
+    def output_feat_head(self, output_latents: torch.Tensor):
+        """
+        This is the output head that converts the output feature latents to the final output.
+        It is used in the forward pass to compute the final output.
+        """
+        return self.output_adapter_feat(output_latents)
+
     def output_head(self, output_latents: torch.Tensor):
         """
         This is the output head that converts the output latents to the final output.
@@ -250,17 +270,20 @@ class ClassificationAdaPerceiver(
         num_tokens=None,
         mat_dim=None,
         depth=None,
-        depth_tau=None,
         token_grans=None,
         **kwargs
-    ) -> ClassificationOutput:
+    ) -> DistillOutput:
         B = x.shape[0]
         device = x.device
+
+        # Embed input into patches
+        patches = self.patch_embed(x)
 
         # Creates the process and output latents
         N = num_tokens if num_tokens else self.max_latent_tokens  # Number of tokens
         process_latents = self.process_latents((B, N))
         output_latents = self.output_latents(B)
+        output_latents_feat = self.output_latents_feat(patches.clone())
 
         # Compute the RoPE frequencies
         freq_cis = self.compute_freq_cis(N, device)
@@ -273,32 +296,18 @@ class ClassificationAdaPerceiver(
             token_grans=self.mask_token_grans if token_grans is None else token_grans,
         )
 
-        # Patch Embedding
-        patches = self.patch_embed(x)
-
         # Read inputs into process latents
         process_latents = self.read(patches, process_latents, freq_cis)
 
-        # This is the branch for early-exit with confidence.
-        if depth_tau is not None:
-            process_latents = self.forward_block_conf(
-                process_latents=process_latents,
-                output_latents=output_latents,
-                freq_cis=freq_cis,
-                block_mask=block_mask,
-                mat_dim=mat_dim,
-                depth_tau=depth_tau,
-            )
-        else:
-            process_latents = self.forward_blocks(
-                process_latents=process_latents,
-                freq_cis=freq_cis,
-                block_mask=block_mask,
-                mat_dim=mat_dim,
-                depth=depth,
-            )
+        process_latents = self.forward_blocks(
+            process_latents=process_latents,
+            freq_cis=freq_cis,
+            block_mask=block_mask,
+            mat_dim=mat_dim,
+            depth=depth,
+        )
 
-        # This is the final writeout step.
+        # This is the final writeout step to get Logits
         final_writeout = self.write(
             process_latents=process_latents,
             output_latents=output_latents,
@@ -306,14 +315,22 @@ class ClassificationAdaPerceiver(
         )
         output = self.output_head(final_writeout)
 
-        return ClassificationOutput(logits=output)
+        # This is the final writeout step to get feature tokens
+        final_feat_writeout = self.write_feat(
+            process_latents=process_latents,
+            output_latents=output_latents_feat,
+            freq_cis=freq_cis,
+        )
+        output_feats = self.output_feat_head(final_feat_writeout)
+
+        return DistillOutput(logits=output, features=output_feats)
 
 
 if __name__ == "__main__":
-    model = ClassificationAdaPerceiver.from_pretrained("pjajal/adaperceiver-v1-in1k-ft")
-    print("Model loaded from hub successfully!")
+    model = DistillAdaPerceiver.from_pretrained("pjajal/adaperceiver-v1")
 
     # Test forward pass
     dummy_input = torch.randn(2, 3, 224, 224)
-    output = model(dummy_input, num_tokens=256, mat_dim=128, depth=12)
-    print("Output shape:", output.logits.shape)
+    outputs = model(dummy_input, num_tokens=256, mat_dim=128, depth=12)
+    print("Logits shape:", outputs.logits.shape)
+    print("Features shape:", outputs.features.shape)

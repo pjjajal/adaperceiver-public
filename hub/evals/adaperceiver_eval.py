@@ -1,9 +1,3 @@
-import argparse
-import json
-import random
-from datetime import datetime
-from pathlib import Path
-import random
 from itertools import product
 import pandas as pd
 from tqdm import tqdm
@@ -56,8 +50,8 @@ def eval(cfg, model: ClassificationAdaPerceiver, loader, device):
                         mat_dim=mat_dim,
                         depth=depth,  # +1 because depth is zero-indexeds
                     )
-                    top_1_accuracy(output.squeeze(), label)
-                    top_5_accuracy(output.squeeze(), label)
+                    top_1_accuracy(output.logits.squeeze(), label)
+                    top_5_accuracy(output.logits.squeeze(), label)
 
         input_shape = img.shape
         torch.cuda.reset_peak_memory_stats()
