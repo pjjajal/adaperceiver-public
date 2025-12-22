@@ -8,16 +8,12 @@ import torch.nn.functional as F
 from timm.layers import get_act_layer, get_norm_layer
 
 from modules.layers.attention import Attention, FlexAttention
-from modules.layers.attn_masks import create_block_mask, create_causal_mask, create_bidir_mask
+from modules.layers.attn_masks import create_block_mask, create_causal_mask
 from modules.layers.block import Block
 from modules.layers.linear import MatLinear
 from modules.layers.ffn import Mlp, SwiGLU
 from modules.layers.latents import ProcessLatents
 from modules.layers.rope import precompute_freqs_cis
-
-# from layers.adaperceiver.attn_masks import create_block_mask, create_causal_mask
-# from timm.layers import get_norm_layer, get_act_layer
-# import torch.nn.attention.flex_attention as flex_attn
 
 
 @dataclass
@@ -65,7 +61,6 @@ def get_attn_layer(attn_layer: str):
         raise ValueError(f"Unknown attn layer: {attn_layer}")
 
 
-# TODO: Update this to support arbitrary I/O.
 class AdaPerceiver(nn.Module):
     def __init__(self, config: AdaPercevierConfig):
         super().__init__()
@@ -152,7 +147,8 @@ class AdaPerceiver(nn.Module):
         assert mask_type in [
             "causal",
             "block",
-            "bidir", "none",
+            "bidir",
+            "none",
         ], f"Invalid mask type: {mask_type}. Must be one of 'causal', 'block', or 'none'."
         if mask_type == "none":
             return None

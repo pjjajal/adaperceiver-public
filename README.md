@@ -1,25 +1,173 @@
-AdaPerceiver
-============
-PyTorch/Lightning implementation of adaptive Perceiver models for image classification, depth estimation, and semantic segmentation. Training and evaluation are driven by Hydra configs so you can swap datasets, model sizes, and optimization settings from the command line.
+# AdaPerceiver: Transformers with Adaptive Width, Depth, and Tokens
 
-Setup
------
-- Create a virtual environment (optional) and install dependencies with `pip install -r requirements.txt`.
-- All entrypoints use Hydra. Pass `-cn <file>` to pick a config from the matching `config/<task>` folder and override fields inline (e.g., `trainer.devices=2 dataset.data_path=/path/to/imagenet`).
-- All datasets make use of HuggingFace Datasets. The `data_path` field can be used to point the the location of the `HF_CACHE`.
 
-Quickstart
-----------
-- Distillation: `python adaperceiver_distill_hydra.py -cn vit_huge_soadaperciever_12k`
-- Classification fine-tuning: `python adaperceiver_ft_hydra.py -cn soadaperciever_1k`
-- Depth estimation: `python adaperceiver_depth.py -cn vit_huge_soadaperciever_12k`
-- Semantic segmentation: `python adaperceiver_segmentation.py -cn vit_huge_soadaperciever_12k`
-- Adaptive eval sweep for classification: `python adaperceiver_eval.py -cn soadaperceiver_1k`
-- Baseline eval (timm/backbone baselines): `python baselines_eval.py -cn baseline model.name=<timm_model>`
-- Depth/segmentation baselines or eval: use `baselines_depth.py`, `baselines_segmentation.py`, `baselines_eval_depth.py`, and `baselines_eval_seg.py` with the matching configs.
+[![Model on HF](https://huggingface.co/datasets/huggingface/badges/resolve/main/model-on-hf-sm.svg)](https://huggingface.co/collections/pjajal/adaperceiver-v1)
+[![arXiv](https://img.shields.io/badge/arXiv-2511.18105-b31b1b)](https://arxiv.org/abs/2511.18105)
 
-Repository Layout
------------------
+This repository contains the **official PyTorch implementation of the AdaPerceiver model**, a transformer architecture designed for **adaptivity across tokens, depth, and width within a single network**.
+
+**AdaPerceiver** extends the Perceiver family of models with *runtime-configurable computation*. At inference time, a single trained model can trade off **accuracy and FLOPs** by adjusting:
+- the **number of latent tokens**,
+- the **effective depth**, and
+- the **embedding dimension**.
+
+
+**Links**
+- 📄 Paper: https://arxiv.org/abs/2511.18105  
+- 📦 HuggingFace Models: https://huggingface.co/collections/pjajal/adaperceiver-v1
+
+
+## Environment Setup
+Create a virtual environment and install dependencies.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+
+## HuggingFace Models
+The weights for the feature distilled and the IN-1K finetuned models are available on HuggingFace.
+These models can be loaded using the model classes provided in `hub/`.
+
+*Note*: All HuggingFace models support **runtime configuration** of tokens, width, and depth and are intended for **inference, evaluation, and downstream use**; training scripts in this repository use the native module implementations directly.
+
+### Available Hub Modules
+
+- **`hub/adaperceiver.py`**  
+  Base AdaPerceiver backbone implementing adaptive tokens, depth, and width. (This is merely a parent class for the other modules!)
+
+- **`hub/adaperceiver_classification.py`**  
+  AdaPerceiver model for image classification, with support for early exit and adaptive inference-time configuration.
+
+- **`hub/networks/adaperceiver_distill.py`**  
+  Distillation variant that exposes both **logits** and **intermediate features**, used for logit and feature distillation as well as downstream dense prediction tasks.
+
+### Logit + Feature Distilled Model (ImageNet-12K)
+
+This corresponds to the **feature + logit distilled AdaPerceiver model** described in the paper (Appendix D.1).
+
+**Weights:** https://huggingface.co/pjajal/adaperceiver-v1
+
+```python
+import torch
+from hub.networks.adaperceiver_distill import DistillAdaPerceiver
+
+model = DistillAdaPerceiver.from_pretrained("pjajal/adaperceiver-v1")
+
+# forward(
+#   x: input image tensor (B, C, H, W)
+#   num_tokens: number of latent tokens to process (optional)
+#   mat_dim: embedding dimension (optional)
+#   depth: early-exit depth (optional)
+#   token_grans: block-mask granularities (optional)
+# )
+out = model(
+    torch.randn(1, 3, 224, 224),
+    num_tokens=256,
+    mat_dim=128,
+    depth=12,
+)
+
+print(out.logits.shape, out.features.shape)
+```
+
+### ImageNet-1K Classification Model
+
+This is the ImageNet-1K fine-tuned AdaPerceiver model described in Appendix D.2 of the paper.
+
+**Weights:** https://huggingface.co/pjajal/adaperceiver-v1-in1k-ft
+
+```python
+import torch
+from hub.networks.adaperceiver_classification import ClassificationAdaPerceiver
+
+model = ClassificationAdaPerceiver.from_pretrained(
+    "pjajal/adaperceiver-v1-in1k-ft"
+)
+
+# forward(
+#   x: input image tensor (B, C, H, W)
+#   num_tokens: number of latent tokens to process (optional)
+#   mat_dim: embedding dimension (optional)
+#   depth: early-exit depth (optional)
+#   depth_tau: confidence threshold for early exit (optional)
+#   token_grans: block-mask granularities (optional)
+# )
+out = model(
+    torch.randn(1, 3, 224, 224),
+    num_tokens=256,
+    mat_dim=192,
+    depth=12,
+)
+
+print(out.logits.shape)
+```
+
+## Quickstart
+
+Below are the most common entry points for training, fine-tuning, and evaluating AdaPerceiver models. All commands use **Hydra configs**; use `-cn <config_name>` to select a configuration and override fields inline as needed.
+
+### Training
+
+#### Distillation (ImageNet-12K)
+
+```bash
+python adaperceiver_distill_hydra.py -cn vit_huge_soadaperciever_12k
+```
+
+#### Image Classification Fine-Tuning (ImageNet-1K)
+
+```bash
+python adaperceiver_ft_hydra.py -cn soadaperciever_1k
+```
+
+#### Depth Estimation (NYUv2)
+
+```bash
+python adaperceiver_depth.py -cn vit_huge_soadaperciever_12k
+```
+
+#### Semantic Segmentation (ADE20K)
+
+```bash
+python adaperceiver_segmentation.py -cn vit_huge_soadaperciever_12k
+```
+
+### Evaluation
+
+#### Baseline Models
+
+```bash
+# Classfication Evals
+python baseline_eval.py -cn <config-name>
+
+# Segmentation Evaluation
+python baseline_eval_seg.py -cn <config-name>
+
+# Depth Evaluation
+python baseline_eval_depth.py -cn <config-name>
+```
+
+#### AdaPerceiver Evals
+```bash
+# Classfication Evals
+python adaperceiver_eval.py -cn soadaperciever_1k
+
+# Segmentation Evaluation
+python adaperceiver_eval_seg.py -cn vit_huge_soadaperciever_12k
+
+# Depth Evaluation
+python adaperceiver_eval_depth.py -cn vit_huge_soadaperciever_12k
+
+# Policy Evals
+python benchmark_optimal_policy_v2.py -cn soadaperciever_1k_1
+```
+
+
+## Repository Layout
 - `config/`: Hydra configs grouped by task.
   - `depth/`, `segmentation/`: dense prediction configs (e.g., NYU depth, ADE20K) with model sizes, token budgets, and loss weights.
   - `supervised/`: classification fine-tuning configs (ImageNet-1k/12k).
@@ -47,7 +195,15 @@ Repository Layout
   - `benchmark_optimal_policy_v2.py`: measures FLOPs/accuracy for the various policies.
 - `requirements.txt`: Python dependencies.
 
-Tips
-----
-- Hydra creates output directories per run; set `trainer.checkpoint_save_dir` if you want checkpoints in a fixed path.
-- To compile models with `torch.compile`, leave `model.compile=true` (supported in most configs).
+## Reference
+
+If you use this repository, models, or training methodology in your research, please cite the AdaPerceiver paper:
+
+```bibtex
+@article{jajal2025adaperceiver,
+  title={AdaPerceiver: Transformers with Adaptive Width, Depth, and Tokens},
+  author={Jajal, Purvish and Eliopoulos, Nick John and Chou, Benjamin Shiue-Hal and Thiruvathukal, George K and Lu, Yung-Hsiang and Davis, James C},
+  journal={arXiv preprint arXiv:2511.18105},
+  year={2025}
+}
+```
